@@ -5,7 +5,7 @@ import "github.com/eclipse/paho.golang/paho"
 // Subscriber is an interface for MQTT subscriber for WeTriage messages.
 type Subscriber interface {
 	// Option returns subscription options for MQTT. Mainly the subscription topic.
-	Option() *paho.SubscribeOptions
+	Option() paho.SubscribeOptions
 	// Handle is called when a message is received.
 	Handle(publish *paho.Publish) error
 }

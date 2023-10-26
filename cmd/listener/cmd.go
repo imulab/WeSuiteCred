@@ -3,15 +3,20 @@ package listener
 import (
 	"absurdlab.io/WeSuiteCred/cmd/internal"
 	"absurdlab.io/WeSuiteCred/internal/stringx"
+	"absurdlab.io/WeSuiteCred/internal/wt"
 	"context"
 	"errors"
 	"fmt"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
+	"github.com/peterbourgon/diskv/v3"
 	"github.com/rs/zerolog"
+	"github.com/samber/lo"
 	"github.com/urfave/cli/v2"
+	"go.uber.org/fx"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -27,7 +32,29 @@ func Command() *cli.Command {
 }
 
 func runApp(ctx context.Context, conf *config) error {
-	return nil
+	return fx.New(
+		fx.NopLogger,
+		fx.Supply(conf),
+		fx.Provide(
+			newLogger,
+			newDiskStore,
+			newMqttClient,
+			newWtProperties,
+			wt.NewCorpSecretDao,
+			wt.NewCorpAuthInfoDao,
+			wt.NewSuiteAccessTokenSupplier,
+			wt.NewCorpService,
+			wt.NewSuiteTicketInfoSubscriber,
+			wt.NewCreateAuthInfoSubscriber,
+			wt.NewResetPermanentCodeInfoSubscriber,
+		),
+		fx.Invoke(
+			func(logger *zerolog.Logger, cm *autopaho.ConnectionManager) {
+				logger.Info().Msg("WeSuiteCred waiting for messages.")
+				<-cm.Done()
+			},
+		),
+	).Start(ctx)
 }
 
 func newLogger(c *config) *zerolog.Logger {
@@ -45,7 +72,7 @@ func newLogger(c *config) *zerolog.Logger {
 	return &logger
 }
 
-func newMqttClient(c *config, logger *zerolog.Logger) (*autopaho.ConnectionManager, error) {
+func newMqttClient(c *config, logger *zerolog.Logger, subscribers []wt.Subscriber) (*autopaho.ConnectionManager, error) {
 	brokerUrl, err := url.Parse(c.MqttUrl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid mqtt broker url: %w", err)
@@ -63,6 +90,15 @@ func newMqttClient(c *config, logger *zerolog.Logger) (*autopaho.ConnectionManag
 		debugLogger = errorLogger
 	}
 
+	router := paho.NewStandardRouter()
+	for _, s := range subscribers {
+		router.RegisterHandler(s.Option().Topic, func(p *paho.Publish) {
+			if handleErr := s.Handle(p); handleErr != nil {
+				logger.Err(handleErr).Str("topic", p.Topic).Msg("failed to handle message")
+			}
+		})
+	}
+
 	cm, err := autopaho.NewConnection(ctx, autopaho.ClientConfig{
 		BrokerUrls:        []*url.URL{brokerUrl},
 		KeepAlive:         60,
@@ -70,10 +106,9 @@ func newMqttClient(c *config, logger *zerolog.Logger) (*autopaho.ConnectionManag
 		ConnectTimeout:    15 * time.Second,
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, _ *paho.Connack) {
 			if _, subErr := cm.Subscribe(ctx, &paho.Subscribe{
-				Subscriptions: []paho.SubscribeOptions{
-					{Topic: "T/WeTriage/suite_ticket_info"},
-					{Topic: "T/WeTriage/reset_permanent_code_info"},
-				},
+				Subscriptions: lo.Map(subscribers, func(s wt.Subscriber, _ int) paho.SubscribeOptions {
+					return s.Option()
+				}),
 			}); subErr != nil {
 				panic(subErr)
 			}
@@ -84,13 +119,7 @@ func newMqttClient(c *config, logger *zerolog.Logger) (*autopaho.ConnectionManag
 		PahoErrors: errorLogger,
 		ClientConfig: paho.ClientConfig{
 			ClientID: fmt.Sprintf("WeSuiteCred@%s", stringx.RandAlphaNumeric(6)),
-			//Router: paho.NewSingleHandlerRouter(func(pub *paho.Publish) {
-			//	logger.Info().
-			//		Str("topic", pub.Topic).
-			//		Int("qos", int(pub.QoS)).
-			//		RawJSON("payload", pub.Payload).
-			//		Msg("Received message")
-			//}),
+			Router:   router,
 		},
 	})
 	if err != nil {
@@ -104,4 +133,23 @@ func newMqttClient(c *config, logger *zerolog.Logger) (*autopaho.ConnectionManag
 	}
 
 	return cm, nil
+}
+
+func newDiskStore(c *config) *diskv.Diskv {
+	return diskv.New(diskv.Options{
+		BasePath: c.StoreDir,
+		Transform: func(s string) []string {
+			s = strings.TrimSpace(s)
+			return strings.Split(s, "/")
+		},
+		CacheSizeMax: 1024 * 1024, // 1MB
+	})
+}
+
+func newWtProperties(c *config) *wt.Properties {
+	return &wt.Properties{
+		SuiteId:                c.SuiteId,
+		SuiteSecret:            c.SuiteSecret,
+		SuiteAccessTokenLeeway: 30 * time.Second,
+	}
 }

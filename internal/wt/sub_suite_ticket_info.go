@@ -13,14 +13,8 @@ const (
 	keySuiteTicket = "suite_ticket"
 )
 
-func NewSuiteTicketInfoSubscriber(props *Properties) Subscriber {
-	return &suiteTicketInfoSubscriber{
-		suiteProps: props,
-		store: diskv.New(diskv.Options{
-			BasePath:     props.StorageDirectory,
-			CacheSizeMax: 1024 * 1024, // 1MB
-		}),
-	}
+func NewSuiteTicketInfoSubscriber(props *Properties, store *diskv.Diskv) Subscriber {
+	return &suiteTicketInfoSubscriber{suiteProps: props, store: store}
 }
 
 type suiteTicketInfoSubscriber struct {
@@ -30,8 +24,8 @@ type suiteTicketInfoSubscriber struct {
 	store      *diskv.Diskv
 }
 
-func (s *suiteTicketInfoSubscriber) Option() *paho.SubscribeOptions {
-	return &paho.SubscribeOptions{
+func (s *suiteTicketInfoSubscriber) Option() paho.SubscribeOptions {
+	return paho.SubscribeOptions{
 		Topic: "T/WeTriage/suite_ticket_info",
 	}
 }
