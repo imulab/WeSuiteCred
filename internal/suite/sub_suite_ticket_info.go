@@ -1,27 +1,22 @@
-package wt
+package suite
 
 import (
+	"absurdlab.io/WeSuiteCred/internal/wt"
+	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/eclipse/paho.golang/paho"
-	"github.com/peterbourgon/diskv/v3"
-	"sync"
+	"github.com/uptrace/bun"
+	"time"
 )
 
-const (
-	keySuiteTicket = "suite_ticket"
-)
-
-func NewSuiteTicketInfoSubscriber(props *Properties, store *diskv.Diskv) Subscriber {
-	return &suiteTicketInfoSubscriber{suiteProps: props, store: store}
+func NewSuiteTicketInfoSubscriber(props *Properties, db *bun.DB) wt.Subscriber {
+	return &suiteTicketInfoSubscriber{props: props, db: db}
 }
 
 type suiteTicketInfoSubscriber struct {
-	sync.Mutex
-
-	suiteProps *Properties
-	store      *diskv.Diskv
+	props *Properties
+	db    *bun.DB
 }
 
 func (s *suiteTicketInfoSubscriber) Option() paho.SubscribeOptions {
@@ -31,29 +26,29 @@ func (s *suiteTicketInfoSubscriber) Option() paho.SubscribeOptions {
 }
 
 func (s *suiteTicketInfoSubscriber) Handle(pub *paho.Publish) error {
-	var body payload[suiteTicketInfo]
+	var body wt.Payload[suiteTicketInfo]
 	if err := json.Unmarshal(pub.Payload, &body); err != nil {
 		return err
 	}
 
 	switch {
-	case body.Content.SuiteId != s.suiteProps.SuiteId:
+	case body.Content.SuiteId != s.props.Id:
 		return errors.New("suite_id mismatch")
 	case len(body.Content.SuiteTicket) == 0:
 		return errors.New("suite_ticket is empty")
 	}
 
-	s.Lock()
-	defer s.Unlock()
+	ticket := Ticket{ID: 1, Ticket: body.Content.SuiteTicket}
 
-	if s.store.Has(keySuiteTicket) {
-		if err := s.store.Erase(keySuiteTicket); err != nil {
-			return fmt.Errorf("failed to erase suite_ticket: %w", err)
-		}
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	if err := s.store.WriteString(keySuiteTicket, body.Content.SuiteTicket); err != nil {
-		return fmt.Errorf("failed to write suite_ticket: %w", err)
+	if _, err := s.db.NewInsert().
+		Model(&ticket).
+		On("CONFLICT (id) DO UPDATE").
+		Set("ticket = EXCLUDED.ticket").
+		Exec(ctx); err != nil {
+		return err
 	}
 
 	return nil

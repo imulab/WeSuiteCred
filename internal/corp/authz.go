@@ -1,64 +1,25 @@
-package wt
+package corp
 
 import (
-	"encoding/json"
-	"fmt"
-	"github.com/peterbourgon/diskv/v3"
+	"absurdlab.io/WeSuiteCred/internal/sqlitedb"
+	"github.com/uptrace/bun"
 )
 
-func NewCorpAuthInfoDao(store *diskv.Diskv) *CorpAuthInfoDao {
-	return &CorpAuthInfoDao{store: store}
+// Authorization models the corp_authz table which stores the authorization information of the client corporation.
+type Authorization struct {
+	bun.BaseModel `bun:"table:corp_authz"`
+
+	ID            int64                       `bun:"id,pk,autoincrement"`
+	CorpID        string                      `bun:"corp_id,notnull"`
+	CorpName      string                      `bun:"corp_name,notnull"`
+	PermanentCode string                      `bun:"perm_code,notnull"`
+	AuthInfo      *sqlitedb.JSON[AuthInfo]    `bun:"auth_info,notnull"`
+	Permissions   *sqlitedb.JSON[Permissions] `bun:"perm,notnull"`
 }
 
-type CorpAuthInfoDao struct {
-	store *diskv.Diskv
-}
-
-func (s *CorpAuthInfoDao) Write(info *AuthInfo) error {
-	key := corpAuthInfoKey(info.AuthCorpInfo.CorpId)
-
-	jsonBytes, err := json.Marshal(info)
-	if err != nil {
-		return err
-	}
-
-	if err = s.Remove(info.AuthCorpInfo.CorpId); err != nil {
-		return err
-	}
-
-	if err = s.store.Write(key, jsonBytes); err != nil {
-		return fmt.Errorf("failed to write auth info: %w", err)
-	}
-
-	return nil
-}
-
-func (s *CorpAuthInfoDao) Get(corpId string) (*AuthInfo, error) {
-	jsonBytes, err := s.store.Read(corpAuthInfoKey(corpId))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read auth info: %w", err)
-	}
-
-	var info AuthInfo
-	if err = json.Unmarshal(jsonBytes, &info); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal auth info: %w", err)
-	}
-
-	return &info, nil
-}
-
-func (s *CorpAuthInfoDao) Remove(corpId string) error {
-	key := corpAuthInfoKey(corpId)
-
-	if s.store.Has(key) {
-		if err := s.store.Erase(key); err != nil {
-			return fmt.Errorf("failed to erase auth info: %w", err)
-		}
-	}
-
-	return nil
-}
-
+// AuthInfo contains the authorization event information from WeCom as a result of the client corporation authorizes
+// access by the suite. This information is embedded in the payload of both create_auth_info event and change_auth_info
+// event.
 type AuthInfo struct {
 	DealerCorpInfo struct {
 		CorpId   string `json:"corpid"`
@@ -107,6 +68,9 @@ type AuthInfo struct {
 	} `json:"auth_user_info"`
 }
 
-func corpAuthInfoKey(corpId string) string {
-	return fmt.Sprintf("%s/auth_info.json", corpId)
+// Permissions contains the list of access permissions granted by the admin from the authorizing corporation.
+// It is recommended for developers to monitor the changes of permissions and contact the administrator if any
+// required permission was not granted.
+type Permissions struct {
+	AppPermissions []string `json:"app_permissions"`
 }

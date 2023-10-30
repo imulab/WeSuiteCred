@@ -10,8 +10,8 @@ type Subscriber interface {
 	Handle(publish *paho.Publish) error
 }
 
-// payload replicates the WeTriage message envelope structure.
-type payload[T any] struct {
+// Payload replicates the WeTriage message envelope structure.
+type Payload[T any] struct {
 	Id        string `json:"id"`
 	CreatedAt int64  `json:"created_at"`
 	Topic     string `json:"topic"`

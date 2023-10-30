@@ -1,11 +1,12 @@
-package wt
+package suite
 
 import (
-	"absurdlab.io/WeSuiteCred/internal/httpx"
+	"absurdlab.io/WeSuiteCred/internal/x"
+	"context"
 	"errors"
 	"fmt"
-	"github.com/peterbourgon/diskv/v3"
 	"github.com/rs/zerolog"
+	"github.com/uptrace/bun"
 	"sync"
 	"time"
 )
@@ -14,30 +15,30 @@ const (
 	getSuiteAccessTokenUrl = "https://qyapi.weixin.qq.com/cgi-bin/service/get_suite_token"
 )
 
-func NewSuiteAccessTokenSupplier(
+func NewAccessTokenSupplier(
 	props *Properties,
 	logger *zerolog.Logger,
-	store *diskv.Diskv,
-) *SuiteAccessTokenSupplier {
-	return &SuiteAccessTokenSupplier{
+	db *bun.DB,
+) *AccessTokenSupplier {
+	return &AccessTokenSupplier{
 		logger: logger,
 		props:  props,
-		store:  store,
+		db:     db,
 	}
 }
 
-type SuiteAccessTokenSupplier struct {
+type AccessTokenSupplier struct {
 	sync.RWMutex
 
 	logger *zerolog.Logger
 	props  *Properties
-	store  *diskv.Diskv
+	db     *bun.DB
 
 	accessToken string
 	expiresAt   time.Time
 }
 
-func (s *SuiteAccessTokenSupplier) Get() (string, error) {
+func (s *AccessTokenSupplier) Get() (string, error) {
 	token, err := s.doGet()
 	if err != nil {
 		return "", fmt.Errorf("failed to request suite_access_token: %w", err)
@@ -46,7 +47,26 @@ func (s *SuiteAccessTokenSupplier) Get() (string, error) {
 	return token, nil
 }
 
-func (s *SuiteAccessTokenSupplier) doGet() (string, error) {
+func (s *AccessTokenSupplier) Reset() {
+	s.Lock()
+	s.accessToken = ""
+	s.expiresAt = time.Time{}
+	s.Unlock()
+}
+
+func (s *AccessTokenSupplier) getLatestTicket() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var ticket Ticket
+	if err := s.db.NewSelect().Model(&ticket).Where("id = ?", int64(1)).Scan(ctx); err != nil {
+		return "", fmt.Errorf("failed to get suite_ticket: %w", err)
+	}
+
+	return ticket.Ticket, nil
+}
+
+func (s *AccessTokenSupplier) doGet() (string, error) {
 	if token, ok := s.tryReadToken(true); ok {
 		return token, nil
 	}
@@ -58,13 +78,21 @@ func (s *SuiteAccessTokenSupplier) doGet() (string, error) {
 		return token, nil
 	}
 
-	suiteTicket := s.store.ReadString(keySuiteTicket)
-	if len(suiteTicket) == 0 {
-		return "", errors.New("suite_ticket is empty")
+	suiteTicket, err := s.getLatestTicket()
+	if err != nil {
+		return "", err
 	}
 
 	var res getSuiteAccessTokenResponse
-	if err := httpx.PostJson(getSuiteAccessTokenUrl, getSuiteAccessTokenRequest{}, &res); err != nil {
+	if err = x.PostJson(
+		getSuiteAccessTokenUrl,
+		getSuiteAccessTokenRequest{
+			SuiteId:     s.props.Id,
+			SuiteSecret: s.props.Secret,
+			SuiteTicket: suiteTicket,
+		},
+		&res,
+	); err != nil {
 		return "", err
 	}
 
@@ -82,7 +110,7 @@ func (s *SuiteAccessTokenSupplier) doGet() (string, error) {
 	return s.accessToken, nil
 }
 
-func (s *SuiteAccessTokenSupplier) tryReadToken(lock bool) (string, bool) {
+func (s *AccessTokenSupplier) tryReadToken(lock bool) (string, bool) {
 	if lock {
 		s.RLock()
 		defer s.RUnlock()
@@ -91,7 +119,7 @@ func (s *SuiteAccessTokenSupplier) tryReadToken(lock bool) (string, bool) {
 	switch {
 	case len(s.accessToken) == 0:
 	case s.expiresAt.IsZero():
-	case time.Now().Add(s.props.SuiteAccessTokenLeeway).After(s.expiresAt):
+	case time.Now().Add(s.props.AccessTokenLeeway).After(s.expiresAt):
 	default:
 		return s.accessToken, true
 	}

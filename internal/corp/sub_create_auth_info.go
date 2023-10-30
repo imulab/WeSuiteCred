@@ -1,21 +1,25 @@
-package wt
+package corp
 
 import (
+	"absurdlab.io/WeSuiteCred/internal/suite"
+	"absurdlab.io/WeSuiteCred/internal/wt"
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/eclipse/paho.golang/paho"
+	"time"
 )
 
-func NewCreateAuthInfoSubscriber(props *Properties, corpService *CorpService) Subscriber {
+func NewCreateAuthInfoSubscriber(props *suite.Properties, service *Service) wt.Subscriber {
 	return &createAuthInfoSubscriber{
-		props:       props,
-		corpService: corpService,
+		suiteProps: props,
+		service:    service,
 	}
 }
 
 type createAuthInfoSubscriber struct {
-	props       *Properties
-	corpService *CorpService
+	suiteProps *suite.Properties
+	service    *Service
 }
 
 func (s *createAuthInfoSubscriber) Option() paho.SubscribeOptions {
@@ -23,19 +27,22 @@ func (s *createAuthInfoSubscriber) Option() paho.SubscribeOptions {
 }
 
 func (s *createAuthInfoSubscriber) Handle(pub *paho.Publish) error {
-	var body payload[createAuthInfo]
+	var body wt.Payload[createAuthInfo]
 	if err := json.Unmarshal(pub.Payload, &body); err != nil {
 		return err
 	}
 
 	switch {
-	case body.Content.SuiteId != s.props.SuiteId:
+	case body.Content.SuiteId != s.suiteProps.Id:
 		return errors.New("suite_id mismatch")
 	case len(body.Content.AuthCode) == 0:
 		return errors.New("auth_code is empty")
 	}
 
-	return s.corpService.UpdateSecret(body.Content.AuthCode)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	return s.service.OnNewAuthCode(ctx, body.Content.AuthCode)
 }
 
 type createAuthInfo struct {

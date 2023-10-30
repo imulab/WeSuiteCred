@@ -2,21 +2,23 @@ package listener
 
 import (
 	"absurdlab.io/WeSuiteCred/cmd/internal"
-	"absurdlab.io/WeSuiteCred/internal/stringx"
+	"absurdlab.io/WeSuiteCred/internal/corp"
+	"absurdlab.io/WeSuiteCred/internal/sqlitedb"
+	"absurdlab.io/WeSuiteCred/internal/suite"
 	"absurdlab.io/WeSuiteCred/internal/wt"
+	"absurdlab.io/WeSuiteCred/internal/x"
 	"context"
 	"errors"
 	"fmt"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
-	"github.com/peterbourgon/diskv/v3"
 	"github.com/rs/zerolog"
 	"github.com/samber/lo"
+	"github.com/uptrace/bun"
 	"github.com/urfave/cli/v2"
 	"go.uber.org/fx"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -37,18 +39,25 @@ func runApp(ctx context.Context, conf *config) error {
 		fx.Supply(conf),
 		fx.Provide(
 			newLogger,
-			newDiskStore,
 			newMqttClient,
-			newWtProperties,
-			wt.NewCorpSecretDao,
-			wt.NewCorpAuthInfoDao,
-			wt.NewSuiteAccessTokenSupplier,
-			wt.NewCorpService,
-			wt.NewSuiteTicketInfoSubscriber,
-			wt.NewCreateAuthInfoSubscriber,
-			wt.NewResetPermanentCodeInfoSubscriber,
+			newSuiteProperties,
+			sqlitedb.New,
+			suite.NewAccessTokenSupplier,
+			suite.NewSuiteTicketInfoSubscriber,
+			corp.NewService,
+			corp.NewCreateAuthInfoSubscriber,
+			corp.NewChangeAuthInfoSubscriber,
+			corp.NewCancelAuthInfoSubscriber,
+			corp.NewResetPermanentCodeInfoSubscriber,
 		),
 		fx.Invoke(
+			func(db *bun.DB) {
+				db.RegisterModel(
+					(*suite.Ticket)(nil),
+					(*corp.AuthInfo)(nil),
+				)
+			},
+			sqlitedb.Migrate,
 			func(logger *zerolog.Logger, cm *autopaho.ConnectionManager) {
 				logger.Info().Msg("WeSuiteCred waiting for messages.")
 				<-cm.Done()
@@ -118,7 +127,7 @@ func newMqttClient(c *config, logger *zerolog.Logger, subscribers []wt.Subscribe
 		PahoDebug:  debugLogger,
 		PahoErrors: errorLogger,
 		ClientConfig: paho.ClientConfig{
-			ClientID: fmt.Sprintf("WeSuiteCred@%s", stringx.RandAlphaNumeric(6)),
+			ClientID: fmt.Sprintf("WeSuiteCred@%s", x.RandAlphaNumeric(6)),
 			Router:   router,
 		},
 	})
@@ -135,21 +144,10 @@ func newMqttClient(c *config, logger *zerolog.Logger, subscribers []wt.Subscribe
 	return cm, nil
 }
 
-func newDiskStore(c *config) *diskv.Diskv {
-	return diskv.New(diskv.Options{
-		BasePath: c.StoreDir,
-		Transform: func(s string) []string {
-			s = strings.TrimSpace(s)
-			return strings.Split(s, "/")
-		},
-		CacheSizeMax: 1024 * 1024, // 1MB
-	})
-}
-
-func newWtProperties(c *config) *wt.Properties {
-	return &wt.Properties{
-		SuiteId:                c.SuiteId,
-		SuiteSecret:            c.SuiteSecret,
-		SuiteAccessTokenLeeway: 30 * time.Second,
+func newSuiteProperties(c *config) *suite.Properties {
+	return &suite.Properties{
+		Id:                c.SuiteId,
+		Secret:            c.SuiteSecret,
+		AccessTokenLeeway: 30 * time.Second,
 	}
 }
