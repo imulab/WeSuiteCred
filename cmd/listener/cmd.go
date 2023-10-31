@@ -100,16 +100,16 @@ func newMqttClient(c *config, logger *zerolog.Logger, subscribers []wt.Subscribe
 	}
 
 	router := paho.NewStandardRouter()
-	for _, s := range subscribers {
-		router.RegisterHandler(s.Option().Topic, func(p *paho.Publish) {
-			if handleErr := s.Handle(p); handleErr != nil {
+	lo.ForEach(subscribers, func(s wt.Subscriber, _ int) {
+		s0 := s
+		router.RegisterHandler(s0.Option().Topic, func(p *paho.Publish) {
+			if handleErr := s0.Handle(p); handleErr != nil {
 				logger.Err(handleErr).Str("topic", p.Topic).Msg("failed to handle message")
 				return
 			}
-
 			logger.Info().Str("topic", p.Topic).Msg("handled message")
 		})
-	}
+	})
 
 	cm, err := autopaho.NewConnection(ctx, autopaho.ClientConfig{
 		BrokerUrls:        []*url.URL{brokerUrl},
