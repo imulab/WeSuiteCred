@@ -27,7 +27,7 @@ func (s *changeAuthInfoSubscriber) Option() paho.SubscribeOptions {
 }
 
 func (s *changeAuthInfoSubscriber) Handle(pub *paho.Publish) error {
-	var body wt.Payload[changeAuthInfo]
+	var body wt.Payload[ChangeAuthInfo]
 	if err := json.Unmarshal(pub.Payload, &body); err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func (s *changeAuthInfoSubscriber) Handle(pub *paho.Publish) error {
 	return s.service.OnAuthorizationChanged(ctx, body.Content.AuthCorpId)
 }
 
-type changeAuthInfo struct {
+type ChangeAuthInfo struct {
 	SuiteId    string `json:"suite_id"`
 	InfoType   string `json:"info_type"`
 	Timestamp  int64  `json:"timestamp"`

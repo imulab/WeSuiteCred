@@ -4,6 +4,7 @@ import (
 	"absurdlab.io/WeSuiteCred/buildinfo"
 	"absurdlab.io/WeSuiteCred/cmd/listener"
 	show "absurdlab.io/WeSuiteCred/cmd/query"
+	"absurdlab.io/WeSuiteCred/cmd/utils"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 	"os"
@@ -28,6 +29,7 @@ func main() {
 		Commands: []*cli.Command{
 			listener.Command(),
 			show.Command(),
+			utils.Command(),
 		},
 	}
 
