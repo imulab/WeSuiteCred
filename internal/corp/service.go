@@ -166,7 +166,7 @@ func (s *Service) getAuthInfo(corpId string, permanentCode string) (*AuthInfo, e
 }
 
 type getPermanentCodeRequest struct {
-	AuthCode string `json:"auth_code_value"`
+	AuthCode string `json:"auth_code"`
 }
 
 type getPermanentCodeResponse struct {
