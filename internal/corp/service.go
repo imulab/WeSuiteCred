@@ -62,7 +62,7 @@ func (s *Service) OnNewAuthCode(ctx context.Context, authCode string) error {
 func (s *Service) OnAuthorizationChanged(ctx context.Context, corpId string) error {
 	var record Authorization
 	if err := s.db.NewSelect().
-		For("UPDATE").
+		Model(&record).
 		Where("corp_id = ?", corpId).
 		Limit(1).
 		Scan(ctx, &record); err != nil {
@@ -82,7 +82,7 @@ func (s *Service) OnAuthorizationChanged(ctx context.Context, corpId string) err
 	record.AuthInfo = sqlitedb.WrapJSON(*authInfo)
 	record.Permissions = sqlitedb.WrapJSON(*permissions)
 
-	if _, err = s.db.NewUpdate().Model(&record).Exec(ctx); err != nil {
+	if _, err = s.db.NewUpdate().Model(&record).WherePK().Exec(ctx); err != nil {
 		return err
 	}
 

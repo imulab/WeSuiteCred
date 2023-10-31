@@ -2,7 +2,6 @@ package suite
 
 import (
 	"absurdlab.io/WeSuiteCred/internal/sqlitedb"
-	"absurdlab.io/WeSuiteCred/internal/x"
 	"context"
 	"github.com/jarcoal/httpmock"
 	"github.com/rs/zerolog"
@@ -10,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"go.uber.org/fx"
-	"net/http"
 	"testing"
 	"time"
 )
@@ -19,18 +17,7 @@ func TestAccessTokenSupplier(t *testing.T) {
 	httpmock.Activate()
 	defer httpmock.DeactivateAndReset()
 
-	httpmock.RegisterResponder(
-		http.MethodPost,
-		"=~^"+getSuiteAccessTokenUrl+".*",
-		func(r *http.Request) (*http.Response, error) {
-			return httpmock.NewJsonResponderOrPanic(http.StatusOK, map[string]interface{}{
-				"errcode":            0,
-				"errmsg":             "ok",
-				"suite_access_token": "61W3mEpU66027wgNZ_MhGHNQDHnFATkDa9-2llMBjUwxRSNPbVsMmyD-yq8wZETSoE5NQgecigDrSHkPtIYA" + x.RandAlphaNumeric(4),
-				"expires_in":         7200,
-			})(r)
-		},
-	)
+	MockGetSuiteAccessTokenEndpoint()
 
 	logger := zerolog.New(zerolog.NewTestWriter(t))
 

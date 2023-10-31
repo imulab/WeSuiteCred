@@ -10,7 +10,7 @@ import (
 
 const (
 	defaultDsn = "file:/var/WeSuiteCred/db.sqlite?cache=shared&mode=rwc&_journal_mode=WAL"
-	memoryDsn  = "file::memory:?cache=shared&mode=rwc&_journal_mode=WAL"
+	memoryDsn  = "file::memory:?mode=rwc&_journal_mode=WAL"
 )
 
 func New() (*bun.DB, error) {
