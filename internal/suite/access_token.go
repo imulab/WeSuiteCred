@@ -44,6 +44,10 @@ func (s *AccessTokenSupplier) Get() (string, error) {
 		return "", fmt.Errorf("failed to request suite_access_token: %w", err)
 	}
 
+	if len(token) == 0 {
+		return "", errors.New("suite_access_token is empty")
+	}
+
 	return token, nil
 }
 

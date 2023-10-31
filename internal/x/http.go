@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"os"
+	"strconv"
 )
 
-func PostJson(url string, request interface{}, response interface{}) (err error) {
+func PostJson(apiUrl string, request interface{}, response interface{}) (err error) {
 	var bodyBytes []byte
 	if request != nil {
 		if bodyBytes, err = json.Marshal(request); err != nil {
@@ -14,7 +17,17 @@ func PostJson(url string, request interface{}, response interface{}) (err error)
 		}
 	}
 
-	res, err := http.Post(url, "application/json", bytes.NewReader(bodyBytes))
+	if shouldDebug, _ := strconv.ParseBool(os.Getenv("WSC_DEBUG")); shouldDebug {
+		u, _ := url.Parse(apiUrl)
+
+		q := u.Query()
+		q.Add("debug", "1")
+
+		u.RawQuery = q.Encode()
+		apiUrl = u.String()
+	}
+
+	res, err := http.Post(apiUrl, "application/json", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return
 	}
