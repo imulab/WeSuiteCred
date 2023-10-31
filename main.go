@@ -1,4 +1,4 @@
-package WeSuiteCred
+package main
 
 import (
 	"absurdlab.io/WeSuiteCred/buildinfo"

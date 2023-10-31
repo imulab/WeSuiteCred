@@ -22,6 +22,8 @@ RUN go build \
 
 FROM alpine:3.18 AS runtime
 
+RUN apk add --no-cache curl
+
 COPY --from=builder /build/WeSuiteCred /usr/bin/WeSuiteCred
 
 CMD ["WeSuiteCred", "listener"]
