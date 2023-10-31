@@ -104,7 +104,10 @@ func newMqttClient(c *config, logger *zerolog.Logger, subscribers []wt.Subscribe
 		router.RegisterHandler(s.Option().Topic, func(p *paho.Publish) {
 			if handleErr := s.Handle(p); handleErr != nil {
 				logger.Err(handleErr).Str("topic", p.Topic).Msg("failed to handle message")
+				return
 			}
+
+			logger.Info().Str("topic", p.Topic).Msg("handled message")
 		})
 	}
 
