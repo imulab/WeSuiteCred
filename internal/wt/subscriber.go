@@ -2,6 +2,10 @@ package wt
 
 import "github.com/eclipse/paho.golang/paho"
 
+const (
+	SubscriberGroupTag = `group:"subscribers"`
+)
+
 // Subscriber is an interface for MQTT subscriber for WeTriage messages.
 type Subscriber interface {
 	// Option returns subscription options for MQTT. Mainly the subscription topic.

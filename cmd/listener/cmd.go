@@ -39,16 +39,16 @@ func runApp(ctx context.Context, conf *config) error {
 		fx.Supply(conf),
 		fx.Provide(
 			newLogger,
-			newMqttClient,
+			fx.Annotate(newMqttClient, fx.ParamTags("", "", wt.SubscriberGroupTag)),
 			newSuiteProperties,
 			sqlitedb.New,
 			suite.NewAccessTokenSupplier,
-			suite.NewSuiteTicketInfoSubscriber,
 			corp.NewService,
-			corp.NewCreateAuthInfoSubscriber,
-			corp.NewChangeAuthInfoSubscriber,
-			corp.NewCancelAuthInfoSubscriber,
-			corp.NewResetPermanentCodeInfoSubscriber,
+			fx.Annotate(suite.NewSuiteTicketInfoSubscriber, fx.ResultTags(wt.SubscriberGroupTag)),
+			fx.Annotate(corp.NewCreateAuthInfoSubscriber, fx.ResultTags(wt.SubscriberGroupTag)),
+			fx.Annotate(corp.NewChangeAuthInfoSubscriber, fx.ResultTags(wt.SubscriberGroupTag)),
+			fx.Annotate(corp.NewCancelAuthInfoSubscriber, fx.ResultTags(wt.SubscriberGroupTag)),
+			fx.Annotate(corp.NewResetPermanentCodeInfoSubscriber, fx.ResultTags(wt.SubscriberGroupTag)),
 		),
 		fx.Invoke(
 			func(db *bun.DB) {
@@ -117,13 +117,18 @@ func newMqttClient(c *config, logger *zerolog.Logger, subscribers []wt.Subscribe
 		ConnectRetryDelay: time.Millisecond,
 		ConnectTimeout:    15 * time.Second,
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, _ *paho.Connack) {
-			if _, subErr := cm.Subscribe(ctx, &paho.Subscribe{
-				Subscriptions: lo.Map(subscribers, func(s wt.Subscriber, _ int) paho.SubscribeOptions {
-					return s.Option()
-				}),
-			}); subErr != nil {
+			subscriptions := lo.Map(subscribers, func(s wt.Subscriber, _ int) paho.SubscribeOptions {
+				return s.Option()
+			})
+
+			if _, subErr := cm.Subscribe(ctx, &paho.Subscribe{Subscriptions: subscriptions}); subErr != nil {
 				panic(subErr)
 			}
+
+			logger.Info().
+				Strs("topics", lo.Map(subscriptions, func(s paho.SubscribeOptions, _ int) string { return s.Topic })).
+				Msg("Subscribed to topics")
+
 			pahoConnUp <- struct{}{}
 		},
 		Debug:      debugLogger,

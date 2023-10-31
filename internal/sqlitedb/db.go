@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	defaultDsn = "file:/var/WeSuiteCred/db.sqlite?cache=shared&mode=rwc&_journal_mode=WAL"
+	defaultDsn = "file:/var/WeSuiteCred/main.db?cache=shared&mode=rwc&_journal_mode=WAL"
 	memoryDsn  = "file::memory:?mode=rwc&_journal_mode=WAL"
 )
 
