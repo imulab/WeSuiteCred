@@ -5,7 +5,6 @@ import "github.com/urfave/cli/v2"
 type config struct {
 	Debug       bool
 	MqttUrl     string
-	StoreDir    string
 	SuiteId     string
 	SuiteSecret string
 }
@@ -24,13 +23,6 @@ func (c *config) flags() []cli.Flag {
 			EnvVars:     []string{"WSC_MQTT_URL"},
 			Destination: &c.MqttUrl,
 			Required:    true,
-		},
-		&cli.StringFlag{
-			Name:        "store-dir",
-			Usage:       "Storage directory where credentials and other information are stored",
-			EnvVars:     []string{"WSC_STORE_DIR"},
-			Destination: &c.StoreDir,
-			Value:       "/var/WeSuiteCred/store",
 		},
 		&cli.StringFlag{
 			Name:        "suite-id",
